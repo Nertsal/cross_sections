@@ -1,4 +1,11 @@
 Config(
+    object_limit: 100,
+    spawn_depth_min: 0.7,
+    spawn_depth_max: 0.9,
+    scale_min: 0.5,
+    scale_max: 1.0,
+    speed: 0.4,
+    rotation_speed_degrees: 15.0,
     background_color: "#0f0f1b",
     object_colors: [
         "#565a75",

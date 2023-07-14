@@ -1,4 +1,7 @@
 mod geometry;
+mod state2d;
+
+use self::state2d::State2d;
 
 use geng::prelude::*;
 
@@ -10,12 +13,19 @@ struct Opts {
 
 #[derive(geng::asset::Load)]
 pub struct Assets {
-    pub config: Config,
+    pub config: Hot<Config>,
 }
 
 #[derive(geng::asset::Load, Deserialize)]
 #[load(serde = "ron")]
 pub struct Config {
+    object_limit: usize,
+    spawn_depth_min: f32,
+    spawn_depth_max: f32,
+    scale_min: f32,
+    scale_max: f32,
+    speed: f32,
+    rotation_speed_degrees: f32,
     background_color: Rgba<f32>,
     object_colors: Vec<Rgba<f32>>,
 }
@@ -24,12 +34,14 @@ pub struct State {
     geng: Geng,
     assets: Rc<Assets>,
     paused: bool,
+    state2d: State2d,
 }
 
 impl State {
     pub fn new(geng: Geng, assets: Rc<Assets>) -> Self {
         Self {
             paused: false,
+            state2d: State2d::new(geng.clone(), assets.clone()),
             geng,
             assets,
         }
@@ -37,13 +49,26 @@ impl State {
 }
 
 impl geng::State for State {
+    fn update(&mut self, delta_time: f64) {
+        if !self.paused {
+            self.state2d.update(delta_time);
+        }
+    }
+
+    fn handle_event(&mut self, event: geng::Event) {
+        if geng_utils::key::is_event_press(&event, [geng::Key::P]) {
+            self.paused = !self.paused;
+        }
+    }
+
     fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
         ugli::clear(
             framebuffer,
-            Some(self.assets.config.background_color),
+            Some(self.assets.config.get().background_color),
             Some(1.0),
             None,
         );
+        self.state2d.draw(framebuffer);
     }
 }
 
