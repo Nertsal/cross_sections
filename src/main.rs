@@ -1,7 +1,9 @@
 mod geometry;
 mod state2d;
+mod state3d;
 
 use self::state2d::State2d;
+use self::state3d::State3d;
 
 use geng::prelude::*;
 
@@ -30,18 +32,27 @@ pub struct Config {
     object_colors: Vec<Rgba<f32>>,
 }
 
+enum Mode {
+    Mode2d,
+    Mode3d,
+}
+
 pub struct State {
     geng: Geng,
     assets: Rc<Assets>,
     paused: bool,
+    mode: Mode,
     state2d: State2d,
+    state3d: State3d,
 }
 
 impl State {
     pub fn new(geng: Geng, assets: Rc<Assets>) -> Self {
         Self {
             paused: false,
+            mode: Mode::Mode2d,
             state2d: State2d::new(geng.clone(), assets.clone()),
+            state3d: State3d::new(geng.clone(), assets.clone()),
             geng,
             assets,
         }
@@ -51,13 +62,27 @@ impl State {
 impl geng::State for State {
     fn update(&mut self, delta_time: f64) {
         if !self.paused {
-            self.state2d.update(delta_time);
+            match self.mode {
+                Mode::Mode2d => {
+                    self.state2d.update(delta_time);
+                }
+                Mode::Mode3d => {
+                    self.state3d.update(delta_time);
+                }
+            }
         }
     }
 
     fn handle_event(&mut self, event: geng::Event) {
         if geng_utils::key::is_event_press(&event, [geng::Key::P]) {
             self.paused = !self.paused;
+        }
+
+        if geng_utils::key::is_event_press(&event, [geng::Key::Space]) {
+            self.mode = match self.mode {
+                Mode::Mode2d => Mode::Mode3d,
+                Mode::Mode3d => Mode::Mode2d,
+            };
         }
     }
 
@@ -68,7 +93,15 @@ impl geng::State for State {
             Some(1.0),
             None,
         );
-        self.state2d.draw(framebuffer);
+
+        match self.mode {
+            Mode::Mode2d => {
+                self.state2d.draw(framebuffer);
+            }
+            Mode::Mode3d => {
+                self.state3d.draw(framebuffer);
+            }
+        }
     }
 }
 
