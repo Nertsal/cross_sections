@@ -7,6 +7,7 @@ use self::state2d::State2d;
 use self::state3d::State3d;
 
 use geng::prelude::*;
+use geng_utils::{conversions::Vec2RealConversions, key as key_utils};
 
 #[derive(clap::Parser)]
 struct Opts {
@@ -44,10 +45,13 @@ enum Mode {
 pub struct State {
     geng: Geng,
     assets: Rc<Assets>,
+    cursor_pos: vec2<f32>,
     paused: bool,
     mode: Mode,
     state2d: State2d,
     state3d: State3d,
+    button2d: Aabb2<f32>,
+    button3d: Aabb2<f32>,
 }
 
 impl State {
@@ -55,8 +59,11 @@ impl State {
         Self {
             paused: false,
             mode: Mode::Mode2d,
+            cursor_pos: vec2::ZERO,
             state2d: State2d::new(geng.clone(), assets.clone()),
             state3d: State3d::new(geng.clone(), assets.clone()),
+            button2d: Aabb2::ZERO,
+            button3d: Aabb2::ZERO,
             geng,
             assets,
         }
@@ -78,15 +85,20 @@ impl geng::State for State {
     }
 
     fn handle_event(&mut self, event: geng::Event) {
-        if geng_utils::key::is_event_press(&event, [geng::Key::P]) {
+        if let geng::Event::CursorMove { position } = event {
+            self.cursor_pos = position.as_f32();
+        }
+
+        if key_utils::is_event_press(&event, [geng::Key::P]) {
             self.paused = !self.paused;
         }
 
-        if geng_utils::key::is_event_press(&event, [geng::Key::Space]) {
-            self.mode = match self.mode {
-                Mode::Mode2d => Mode::Mode3d,
-                Mode::Mode3d => Mode::Mode2d,
-            };
+        if key_utils::is_event_press(&event, [geng::MouseButton::Left]) {
+            if self.button2d.contains(self.cursor_pos) {
+                self.mode = Mode::Mode2d;
+            } else if self.button3d.contains(self.cursor_pos) {
+                self.mode = Mode::Mode3d;
+            }
         }
     }
 
@@ -98,6 +110,7 @@ impl geng::State for State {
             None,
         );
 
+        // State
         match self.mode {
             Mode::Mode2d => {
                 self.state2d.draw(framebuffer);
@@ -106,6 +119,53 @@ impl geng::State for State {
                 self.state3d.draw(framebuffer);
             }
         }
+
+        // UI
+        let framebuffer_size = framebuffer.size().as_f32();
+        let camera = &geng::PixelPerfectCamera;
+        let font_size = framebuffer_size.x.min(framebuffer_size.y) * 0.02;
+
+        let mut draw_button = |text: &str, position: Aabb2<f32>| {
+            let color = if position.contains(self.cursor_pos) {
+                if key_utils::is_key_pressed(self.geng.window(), [geng::MouseButton::Left]) {
+                    // Pressed
+                    Rgba::try_from("#111").unwrap()
+                } else {
+                    // Hovered
+                    Rgba::try_from("#333").unwrap()
+                }
+            } else {
+                Rgba::try_from("#222").unwrap()
+            };
+            self.geng
+                .draw2d()
+                .draw2d(framebuffer, camera, &draw2d::Quad::new(position, color));
+            self.geng.default_font().draw(
+                framebuffer,
+                camera,
+                text,
+                vec2::splat(geng::TextAlign::CENTER),
+                mat3::translate(
+                    geng_utils::layout::aabb_pos(
+                        position.extend_symmetric(vec2(-font_size, 0.0)),
+                        vec2(0.5, 0.5),
+                    ) + vec2(0.0, -font_size / 4.0),
+                ) * mat3::scale_uniform(font_size),
+                Rgba::WHITE,
+            );
+        };
+
+        let button_size = vec2(4.0, 2.0) * font_size;
+        let button = Aabb2::ZERO
+            .extend_positive(button_size)
+            .translate(vec2(0.0, -button_size.y));
+        let pos = vec2(0.0, framebuffer_size.y) + vec2(1.0, -1.0) * font_size;
+
+        self.button2d = button.translate(pos);
+        draw_button("2D", self.button2d);
+
+        self.button3d = button.translate(pos - vec2(0.0, button_size.y + font_size));
+        draw_button("3D", self.button3d);
     }
 }
 
