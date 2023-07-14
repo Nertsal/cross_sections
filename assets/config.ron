@@ -1,0 +1,9 @@
+Config(
+    background_color: "#0f0f1b",
+    object_colors: [
+        "#565a75",
+        "#c6b7be",
+        "#fafbf6",
+    ],
+)
+
