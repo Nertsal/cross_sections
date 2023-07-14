@@ -18,6 +18,9 @@ struct Opts {
 #[derive(geng::asset::Load)]
 pub struct Assets {
     pub config: Hot<Config>,
+    pub cut_front: Hot<ugli::Program>,
+    pub cut_back: Hot<ugli::Program>,
+    pub cross: Hot<ugli::Program>,
     pub simple3d: Hot<ugli::Program>,
     pub outline_marker: Hot<ugli::Program>,
     pub postprocess: Hot<ugli::Program>,

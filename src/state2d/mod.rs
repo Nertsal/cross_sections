@@ -1,4 +1,8 @@
+mod cross;
+mod cut;
+
 use crate::{
+    camera3d::Camera3d,
     geometry::{
         plane::{Plane, PlaneSectionVertex},
         shape::Triangle,
@@ -8,9 +12,9 @@ use crate::{
 };
 
 use geng::prelude::*;
-use geng_utils::conversions::Vec2RealConversions;
+use geng_utils::{conversions::Vec2RealConversions, texture as texture_utils};
 
-struct Object {
+pub struct Object {
     pub geometry: Rc<ugli::VertexBuffer<Vertex>>,
     pub position: vec3<f32>,
     pub orientation: vec3<f32>,
@@ -52,8 +56,14 @@ impl Object {
 pub struct State2d {
     geng: Geng,
     assets: Rc<Assets>,
-    framebuffer_size: vec2<usize>,
-    camera: Camera2d,
+    cut_texture: ugli::Texture,
+    cut_depth: ugli::Renderbuffer<ugli::DepthComponent>,
+    cross_texture: ugli::Texture,
+    cross_depth: ugli::Renderbuffer<ugli::DepthComponent>,
+    flat_texture: ugli::Texture,
+    lower_left_size: vec2<f32>,
+    camera3d: Camera3d,
+    camera2d: Camera2d,
     simulation_time: f32,
     next_spawn: f32,
     prefabs: Vec<Rc<ugli::VertexBuffer<Vertex>>>,
@@ -64,8 +74,21 @@ impl State2d {
     pub fn new(geng: Geng, assets: Rc<Assets>) -> Self {
         let prefab = |geometry| Rc::new(ugli::VertexBuffer::new_dynamic(geng.ugli(), geometry));
         Self {
-            framebuffer_size: vec2(1, 1),
-            camera: Camera2d {
+            cut_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
+            cut_depth: ugli::Renderbuffer::new(geng.ugli(), vec2(1, 1)),
+            cross_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
+            cross_depth: ugli::Renderbuffer::new(geng.ugli(), vec2(1, 1)),
+            flat_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
+            lower_left_size: vec2(0.4, 0.5),
+            camera3d: Camera3d {
+                fov: Angle::from_radians(70.0),
+                pos: vec3(6.0, 0.0, 10.0),
+                rot_h: Angle::from_degrees(30.0),
+                rot_v: Angle::ZERO,
+                near: 0.1,
+                far: 1000.0,
+            },
+            camera2d: Camera2d {
                 center: vec2::ZERO,
                 rotation: Angle::ZERO,
                 fov: 10.0,
@@ -85,9 +108,9 @@ impl State2d {
         let y = rng.gen_range(-1.0..=1.0);
         let pos = vec2(x, y);
         let pos = (self
-            .camera
-            .projection_matrix(self.framebuffer_size.as_f32())
-            * self.camera.view_matrix())
+            .camera2d
+            .projection_matrix(self.flat_texture.size().as_f32())
+            * self.camera2d.view_matrix())
         .inverse()
             * pos.extend(1.0);
         pos.into_2d()
@@ -162,12 +185,47 @@ impl State2d {
     }
 
     pub fn draw(&mut self, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
-        self.framebuffer_size = framebuffer.size();
         ugli::clear(
             framebuffer,
             Some(self.assets.config.get().background_color),
             None,
             None,
+        );
+
+        let framebuffer_size = framebuffer.size().as_f32();
+
+        let cut_pos = Aabb2::ZERO.extend_positive(self.lower_left_size * framebuffer_size);
+        let cross_pos = Aabb2::point(vec2(0.0, cut_pos.max.y)).extend_positive(
+            vec2(self.lower_left_size.x, 1.0 - self.lower_left_size.y) * framebuffer_size,
+        );
+        let flat_pos = if include_3d {
+            Aabb2::point(vec2(cut_pos.max.x, 0.0))
+                .extend_positive(vec2(1.0 - self.lower_left_size.x, 1.0) * framebuffer_size)
+        } else {
+            Aabb2::ZERO.extend_positive(framebuffer_size)
+        };
+
+        if include_3d {
+            let cut_size = cut_pos.size().map(|x| x.round() as usize);
+            if self.cut_texture.size() != cut_size {
+                self.cut_depth = ugli::Renderbuffer::new(self.geng.ugli(), cut_size);
+            }
+            texture_utils::update_texture_size(&mut self.cut_texture, cut_size, self.geng.ugli());
+
+            let cross_size = cross_pos.size().map(|x| x.round() as usize);
+            if self.cross_texture.size() != cross_size {
+                self.cross_depth = ugli::Renderbuffer::new(self.geng.ugli(), cross_size);
+            }
+            texture_utils::update_texture_size(
+                &mut self.cross_texture,
+                cross_size,
+                self.geng.ugli(),
+            );
+        }
+        texture_utils::update_texture_size(
+            &mut self.flat_texture,
+            flat_pos.size().map(|x| x.round() as usize),
+            self.geng.ugli(),
         );
 
         let cross_plane = Plane {
@@ -193,17 +251,66 @@ impl State2d {
             })
             .collect();
 
+        if include_3d {
+            // Cut out the part in front of the plane
+            let mut cut_buffer = attach_clear(
+                &mut self.cut_texture,
+                &mut self.cut_depth,
+                Rgba::opaque(0.1, 0.1, 0.1),
+                self.geng.ugli(),
+            );
+            for obj in &self.objects {
+                cut::draw_cut(
+                    obj,
+                    cross_plane.matrix(),
+                    &self.camera3d,
+                    &self.assets,
+                    &mut cut_buffer,
+                );
+            }
+            draw_texture_to(&self.cut_texture, cut_pos, &self.geng, framebuffer);
+
+            // Draw only the cross section in 3d
+            let mut cross_buffer = attach_clear(
+                &mut self.cross_texture,
+                &mut self.cross_depth,
+                Rgba::opaque(0.05, 0.05, 0.05),
+                self.geng.ugli(),
+            );
+            for (i, cross_section) in &cross_sections {
+                let i = *i;
+                cross::draw_cross_section(
+                    cross_section,
+                    self.objects[i].color,
+                    &self.camera3d,
+                    &self.assets,
+                    &self.geng,
+                    &mut cross_buffer,
+                );
+            }
+            draw_texture_to(&self.cross_texture, cross_pos, &self.geng, framebuffer);
+        }
+
         // Draw the cross section in 2d
+        let mut flat_buffer =
+            texture_utils::attach_texture(&mut self.flat_texture, self.geng.ugli());
+        ugli::clear(
+            &mut flat_buffer,
+            Some(self.assets.config.get().background_color),
+            None,
+            None,
+        );
         for (i, cross_section) in &cross_sections {
             let i = *i;
             draw_flat_section(
                 cross_section,
                 self.objects[i].color,
-                &self.camera,
+                &self.camera2d,
                 &self.geng,
-                framebuffer,
+                &mut flat_buffer,
             );
         }
+        draw_texture_to(&self.flat_texture, flat_pos, &self.geng, framebuffer);
     }
 }
 
@@ -230,5 +337,41 @@ fn draw_flat_section(
         framebuffer,
         camera,
         &draw2d::Chain::new(Chain::new(chain), 0.1, color, 5),
+    );
+}
+
+fn attach<'a>(
+    texture: &'a mut ugli::Texture,
+    depth: &'a mut ugli::Renderbuffer<ugli::DepthComponent>,
+    ugli: &Ugli,
+) -> ugli::Framebuffer<'a> {
+    ugli::Framebuffer::new(
+        ugli,
+        ugli::ColorAttachment::Texture(texture),
+        ugli::DepthAttachment::Renderbuffer(depth),
+    )
+}
+
+fn attach_clear<'a>(
+    texture: &'a mut ugli::Texture,
+    depth: &'a mut ugli::Renderbuffer<ugli::DepthComponent>,
+    clear_color: Rgba<f32>,
+    ugli: &Ugli,
+) -> ugli::Framebuffer<'a> {
+    let mut framebuffer = attach(texture, depth, ugli);
+    ugli::clear(&mut framebuffer, Some(clear_color), Some(1.0), None);
+    framebuffer
+}
+
+fn draw_texture_to(
+    texture: &ugli::Texture,
+    target: Aabb2<f32>,
+    geng: &Geng,
+    framebuffer: &mut ugli::Framebuffer,
+) {
+    geng.draw2d().draw2d(
+        framebuffer,
+        &geng::PixelPerfectCamera,
+        &draw2d::TexturedQuad::new(target, texture),
     );
 }
