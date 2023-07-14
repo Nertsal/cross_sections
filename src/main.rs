@@ -1,3 +1,4 @@
+mod camera3d;
 mod geometry;
 mod state2d;
 mod state3d;
@@ -16,6 +17,9 @@ struct Opts {
 #[derive(geng::asset::Load)]
 pub struct Assets {
     pub config: Hot<Config>,
+    pub simple3d: Hot<ugli::Program>,
+    pub outline_marker: Hot<ugli::Program>,
+    pub postprocess: Hot<ugli::Program>,
 }
 
 #[derive(geng::asset::Load, Deserialize)]
