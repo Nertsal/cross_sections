@@ -1,3 +1,5 @@
+mod geometry;
+
 use geng::prelude::*;
 
 #[derive(clap::Parser)]
