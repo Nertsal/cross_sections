@@ -125,7 +125,16 @@ impl geng::State for State {
         let camera = &geng::PixelPerfectCamera;
         let font_size = framebuffer_size.x.min(framebuffer_size.y) * 0.02;
 
-        let mut draw_button = |text: &str, position: Aabb2<f32>| {
+        let mut draw_button = |text: &str, position: Aabb2<f32>, active: bool| {
+            let color = if active {
+                Rgba::try_from("#aaa").unwrap()
+            } else {
+                Rgba::try_from("#555").unwrap()
+            };
+            self.geng
+                .draw2d()
+                .draw2d(framebuffer, camera, &draw2d::Quad::new(position, color));
+
             let color = if position.contains(self.cursor_pos) {
                 if key_utils::is_key_pressed(self.geng.window(), [geng::MouseButton::Left]) {
                     // Pressed
@@ -137,9 +146,12 @@ impl geng::State for State {
             } else {
                 Rgba::try_from("#222").unwrap()
             };
-            self.geng
-                .draw2d()
-                .draw2d(framebuffer, camera, &draw2d::Quad::new(position, color));
+            self.geng.draw2d().draw2d(
+                framebuffer,
+                camera,
+                &draw2d::Quad::new(position.extend_uniform(-font_size * 0.2), color),
+            );
+
             self.geng.default_font().draw(
                 framebuffer,
                 camera,
@@ -162,10 +174,10 @@ impl geng::State for State {
         let pos = vec2(0.0, framebuffer_size.y) + vec2(1.0, -1.0) * font_size;
 
         self.button2d = button.translate(pos);
-        draw_button("2D", self.button2d);
+        draw_button("2D", self.button2d, matches!(self.mode, Mode::Mode2d));
 
         self.button3d = button.translate(pos - vec2(0.0, button_size.y + font_size));
-        draw_button("3D", self.button3d);
+        draw_button("3D", self.button3d, matches!(self.mode, Mode::Mode3d));
     }
 }
 
