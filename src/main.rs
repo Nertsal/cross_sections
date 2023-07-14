@@ -48,10 +48,12 @@ pub struct State {
     cursor_pos: vec2<f32>,
     paused: bool,
     mode: Mode,
+    include_3d_in_2d: bool,
     state2d: State2d,
     state3d: State3d,
     button2d: Aabb2<f32>,
     button3d: Aabb2<f32>,
+    button_include3d: Aabb2<f32>,
 }
 
 impl State {
@@ -59,11 +61,13 @@ impl State {
         Self {
             paused: false,
             mode: Mode::Mode2d,
+            include_3d_in_2d: false,
             cursor_pos: vec2::ZERO,
             state2d: State2d::new(geng.clone(), assets.clone()),
             state3d: State3d::new(geng.clone(), assets.clone()),
             button2d: Aabb2::ZERO,
             button3d: Aabb2::ZERO,
+            button_include3d: Aabb2::ZERO,
             geng,
             assets,
         }
@@ -98,6 +102,10 @@ impl geng::State for State {
                 self.mode = Mode::Mode2d;
             } else if self.button3d.contains(self.cursor_pos) {
                 self.mode = Mode::Mode3d;
+            } else if matches!(self.mode, Mode::Mode2d)
+                && self.button_include3d.contains(self.cursor_pos)
+            {
+                self.include_3d_in_2d = !self.include_3d_in_2d;
             }
         }
     }
@@ -113,7 +121,7 @@ impl geng::State for State {
         // State
         match self.mode {
             Mode::Mode2d => {
-                self.state2d.draw(framebuffer);
+                self.state2d.draw(self.include_3d_in_2d, framebuffer);
             }
             Mode::Mode3d => {
                 self.state3d.draw(framebuffer);
@@ -178,6 +186,54 @@ impl geng::State for State {
 
         self.button3d = button.translate(pos - vec2(0.0, button_size.y + font_size));
         draw_button("3D", self.button3d, matches!(self.mode, Mode::Mode3d));
+
+        // Tickbox
+        if let Mode::Mode2d = self.mode {
+            let tickbox_size = vec2::splat(1.5) * font_size;
+            let tickbox = Aabb2::ZERO.extend_symmetric(tickbox_size / 2.0);
+            let pos = geng_utils::layout::aabb_pos(self.button2d, vec2(1.0, 0.5));
+
+            self.button_include3d = tickbox
+                .translate(pos)
+                .translate(vec2(font_size + tickbox.width() / 2.0, 0.0));
+            let position = self.button_include3d;
+
+            // Outline
+            let color = if self.include_3d_in_2d {
+                Rgba::try_from("#aaa").unwrap()
+            } else {
+                Rgba::try_from("#555").unwrap()
+            };
+            self.geng
+                .draw2d()
+                .draw2d(framebuffer, camera, &draw2d::Quad::new(position, color));
+
+            // Fill
+            let color = if position.contains(self.cursor_pos) {
+                // Hovered
+                Rgba::try_from("#333").unwrap()
+            } else {
+                Rgba::try_from("#222").unwrap()
+            };
+            self.geng.draw2d().draw2d(
+                framebuffer,
+                camera,
+                &draw2d::Quad::new(position.extend_uniform(-font_size * 0.2), color),
+            );
+
+            // Text
+            let font_size = font_size * 0.8;
+            let pos =
+                geng_utils::layout::aabb_pos(position, vec2(1.0, 0.5)) + vec2(0.5, 0.0) * font_size;
+            self.geng.default_font().draw(
+                framebuffer,
+                camera,
+                "3d",
+                vec2::splat(geng::TextAlign::LEFT),
+                mat3::translate(pos + vec2(0.0, -font_size / 4.0)) * mat3::scale_uniform(font_size),
+                Rgba::WHITE,
+            );
+        }
     }
 }
 

@@ -92,10 +92,8 @@ impl State2d {
             * pos.extend(1.0);
         pos.into_2d()
     }
-}
 
-impl geng::State for State2d {
-    fn update(&mut self, delta_time: f64) {
+    pub fn update(&mut self, delta_time: f64) {
         let delta_time = delta_time as f32;
         let config = self.assets.config.get();
 
@@ -163,7 +161,7 @@ impl geng::State for State2d {
         self.objects.retain(|obj| obj.position.z < 5.0);
     }
 
-    fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
+    pub fn draw(&mut self, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
         self.framebuffer_size = framebuffer.size();
         ugli::clear(
             framebuffer,
