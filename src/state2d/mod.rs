@@ -12,7 +12,7 @@ use crate::{
 };
 
 use geng::prelude::*;
-use geng_utils::{conversions::Vec2RealConversions, texture as texture_utils};
+use geng_utils::{conversions::Vec2RealConversions, key as key_utils, texture as texture_utils};
 
 pub struct Object {
     pub geometry: Rc<ugli::VertexBuffer<Vertex>>,
@@ -53,9 +53,15 @@ impl Object {
     }
 }
 
+enum Drag {
+    X,
+    Y,
+}
+
 pub struct State2d {
     geng: Geng,
     assets: Rc<Assets>,
+    framebuffer_size: vec2<usize>,
     cut_texture: ugli::Texture,
     cut_depth: ugli::Renderbuffer<ugli::DepthComponent>,
     cross_texture: ugli::Texture,
@@ -68,12 +74,17 @@ pub struct State2d {
     next_spawn: f32,
     prefabs: Vec<Rc<ugli::VertexBuffer<Vertex>>>,
     objects: Vec<Object>,
+    cursor_pos: vec2<f32>,
+    separator_x: Aabb2<f32>,
+    separator_y: Aabb2<f32>,
+    drag: Option<Drag>,
 }
 
 impl State2d {
     pub fn new(geng: Geng, assets: Rc<Assets>) -> Self {
         let prefab = |geometry| Rc::new(ugli::VertexBuffer::new_dynamic(geng.ugli(), geometry));
         Self {
+            framebuffer_size: vec2(1, 1),
             cut_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
             cut_depth: ugli::Renderbuffer::new(geng.ugli(), vec2(1, 1)),
             cross_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
@@ -97,6 +108,10 @@ impl State2d {
             next_spawn: 0.0,
             prefabs: vec![prefab(crate::geometry::shape::unit_cube_triangulated())],
             objects: Vec::new(),
+            cursor_pos: vec2::ZERO,
+            separator_x: Aabb2::ZERO,
+            separator_y: Aabb2::ZERO,
+            drag: None,
             geng,
             assets,
         }
@@ -184,7 +199,37 @@ impl State2d {
         self.objects.retain(|obj| obj.position.z < 5.0);
     }
 
+    pub fn handle_event(&mut self, event: &geng::Event) {
+        if let geng::Event::CursorMove { position } = event {
+            self.cursor_pos = position.as_f32();
+
+            if let Some(drag) = &self.drag {
+                match drag {
+                    Drag::X => {
+                        self.lower_left_size.x = self.cursor_pos.x / self.framebuffer_size.x as f32;
+                    }
+                    Drag::Y => {
+                        self.lower_left_size.y = self.cursor_pos.y / self.framebuffer_size.y as f32;
+                    }
+                }
+            }
+        }
+
+        if key_utils::is_event_press(event, [geng::MouseButton::Left]) {
+            if self.separator_x.contains(self.cursor_pos) {
+                self.drag = Some(Drag::X);
+            } else if self.separator_y.contains(self.cursor_pos) {
+                self.drag = Some(Drag::Y);
+            } else {
+                self.drag = None;
+            }
+        } else if key_utils::is_event_release(event, [geng::MouseButton::Left]) {
+            self.drag = None;
+        }
+    }
+
     pub fn draw(&mut self, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
+        self.framebuffer_size = framebuffer.size();
         let config = self.assets.config.get();
         ugli::clear(framebuffer, Some(Rgba::BLACK), None, None);
 
@@ -308,28 +353,42 @@ impl State2d {
         // UI
         let camera = &geng::PixelPerfectCamera;
         if include_3d {
-            let color = Rgba::try_from("#333").unwrap();
-            // Vertical
-            self.geng.draw2d().draw2d(
-                framebuffer,
-                camera,
-                &draw2d::Quad::new(
-                    Aabb2::point(vec2(self.lower_left_size.x, 0.0) * framebuffer_size)
-                        .extend_symmetric(vec2(5.0, 0.0))
-                        .extend_up(framebuffer_size.y),
-                    color,
-                ),
-            );
+            let color_normal = Rgba::try_from("#222").unwrap();
+            let color_hover = Rgba::try_from("#555").unwrap();
+            let color_drag = Rgba::try_from("#111").unwrap();
+
             // Horizontal
+            let color = if let Some(Drag::Y) = self.drag {
+                color_drag
+            } else if self.separator_y.contains(self.cursor_pos) {
+                color_hover
+            } else {
+                color_normal
+            };
+            self.separator_y = Aabb2::point(vec2(0.0, self.lower_left_size.y) * framebuffer_size)
+                .extend_symmetric(vec2(0.0, 5.0))
+                .extend_right(self.lower_left_size.x * framebuffer_size.x);
             self.geng.draw2d().draw2d(
                 framebuffer,
                 camera,
-                &draw2d::Quad::new(
-                    Aabb2::point(vec2(0.0, self.lower_left_size.y) * framebuffer_size)
-                        .extend_symmetric(vec2(0.0, 5.0))
-                        .extend_right(self.lower_left_size.x * framebuffer_size.x),
-                    color,
-                ),
+                &draw2d::Quad::new(self.separator_y, color),
+            );
+
+            // Vertical
+            let color = if let Some(Drag::X) = self.drag {
+                color_drag
+            } else if self.separator_x.contains(self.cursor_pos) {
+                color_hover
+            } else {
+                color_normal
+            };
+            self.separator_x = Aabb2::point(vec2(self.lower_left_size.x, 0.0) * framebuffer_size)
+                .extend_symmetric(vec2(5.0, 0.0))
+                .extend_up(framebuffer_size.y);
+            self.geng.draw2d().draw2d(
+                framebuffer,
+                camera,
+                &draw2d::Quad::new(self.separator_x, color),
             );
         }
     }

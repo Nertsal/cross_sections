@@ -92,6 +92,8 @@ impl geng::State for State {
     }
 
     fn handle_event(&mut self, event: geng::Event) {
+        let mut pass_to_state = true;
+
         if let geng::Event::CursorMove { position } = event {
             self.cursor_pos = position.as_f32();
         }
@@ -101,6 +103,7 @@ impl geng::State for State {
         }
 
         if key_utils::is_event_press(&event, [geng::MouseButton::Left]) {
+            pass_to_state = false;
             if self.button2d.contains(self.cursor_pos) {
                 self.mode = Mode::Mode2d;
             } else if self.button3d.contains(self.cursor_pos) {
@@ -109,6 +112,15 @@ impl geng::State for State {
                 && self.button_include3d.contains(self.cursor_pos)
             {
                 self.include_3d_in_2d = !self.include_3d_in_2d;
+            } else {
+                pass_to_state = true;
+            }
+        }
+
+        if pass_to_state {
+            match self.mode {
+                Mode::Mode2d => self.state2d.handle_event(&event),
+                Mode::Mode3d => self.state3d.handle_event(&event),
             }
         }
     }

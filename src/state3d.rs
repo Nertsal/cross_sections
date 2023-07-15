@@ -108,16 +108,14 @@ impl State3d {
             * pos.extend(1.0);
         pos.into_3d()
     }
-}
 
-impl geng::State for State3d {
-    fn handle_event(&mut self, event: geng::Event) {
-        if geng_utils::key::is_event_press(&event, [geng::Key::P]) {
+    pub fn handle_event(&mut self, event: &geng::Event) {
+        if geng_utils::key::is_event_press(event, [geng::Key::P]) {
             self.paused = !self.paused;
         }
     }
 
-    fn update(&mut self, delta_time: f64) {
+    pub fn update(&mut self, delta_time: f64) {
         let delta_time = delta_time as f32;
         let config = self.assets.config.get();
 
@@ -185,7 +183,7 @@ impl geng::State for State3d {
         self.objects.retain(|obj| obj.position.w < obj.scale * 2.0);
     }
 
-    fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
+    pub fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
         let config = self.assets.config.get();
         ugli::clear(framebuffer, Some(config.background_color), Some(1.0), None);
 
