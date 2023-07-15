@@ -85,13 +85,11 @@ impl State {
     fn touch_release(&mut self, pos: vec2<f32>) {
         if (self.touch_pos - pos).len_sqr() < 1.0 {
             // Click
-            if self.button2d.contains(self.cursor_pos) {
+            if self.button2d.contains(pos) {
                 self.mode = Mode::Mode2d;
-            } else if self.button3d.contains(self.cursor_pos) {
+            } else if self.button3d.contains(pos) {
                 self.mode = Mode::Mode3d;
-            } else if matches!(self.mode, Mode::Mode2d)
-                && self.button_include3d.contains(self.cursor_pos)
-            {
+            } else if matches!(self.mode, Mode::Mode2d) && self.button_include3d.contains(pos) {
                 self.include_3d_in_2d = !self.include_3d_in_2d;
             }
         }
