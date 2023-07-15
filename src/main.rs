@@ -197,10 +197,10 @@ impl geng::State for State {
         let pos = vec2(0.0, framebuffer_size.y) + vec2(1.0, -1.0) * font_size;
 
         self.button2d = button.translate(pos);
-        draw_button("2D", self.button2d, matches!(self.mode, Mode::Mode2d));
+        draw_button("3D -> 2D", self.button2d, matches!(self.mode, Mode::Mode2d));
 
         self.button3d = button.translate(pos - vec2(0.0, button_size.y + font_size));
-        draw_button("3D", self.button3d, matches!(self.mode, Mode::Mode3d));
+        draw_button("4D -> 3D", self.button3d, matches!(self.mode, Mode::Mode3d));
 
         // Tickbox
         if let Mode::Mode2d = self.mode {
@@ -238,14 +238,13 @@ impl geng::State for State {
 
             // Text
             let font_size = font_size * 0.8;
-            let pos =
-                geng_utils::layout::aabb_pos(position, vec2(1.0, 0.5)) + vec2(0.5, 0.0) * font_size;
             self.geng.default_font().draw(
                 framebuffer,
                 camera,
                 "3d",
-                vec2::splat(geng::TextAlign::LEFT),
-                mat3::translate(pos + vec2(0.0, -font_size / 4.0)) * mat3::scale_uniform(font_size),
+                vec2::splat(geng::TextAlign::CENTER),
+                mat3::translate(position.center() + vec2(0.0, -font_size / 4.0))
+                    * mat3::scale_uniform(font_size),
                 Rgba::WHITE,
             );
         }
