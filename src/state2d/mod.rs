@@ -275,8 +275,9 @@ impl State2d {
         };
 
         // Update textures
+        let texture_size = |pos: Aabb2<f32>| pos.size().map(|x| (x.round() as usize).max(1));
         if include_3d {
-            let cut_size = cut_pos.size().map(|x| x.round() as usize);
+            let cut_size = texture_size(cut_pos);
             if self.cut_texture.size() != cut_size {
                 self.cut_depth = ugli::Renderbuffer::new(self.geng.ugli(), cut_size);
             }
@@ -287,7 +288,7 @@ impl State2d {
                 self.geng.ugli(),
             );
 
-            let cross_size = cross_pos.size().map(|x| x.round() as usize);
+            let cross_size = texture_size(cross_pos);
             if self.cross_texture.size() != cross_size {
                 self.cross_depth = ugli::Renderbuffer::new(self.geng.ugli(), cross_size);
             }
@@ -299,7 +300,7 @@ impl State2d {
         }
         texture_utils::update_texture_size(
             &mut self.flat_texture,
-            flat_pos.size().map(|x| x.round() as usize),
+            texture_size(flat_pos),
             self.geng.ugli(),
         );
 
