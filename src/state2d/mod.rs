@@ -185,15 +185,12 @@ impl State2d {
     }
 
     pub fn draw(&mut self, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
-        ugli::clear(
-            framebuffer,
-            Some(self.assets.config.get().background_color),
-            None,
-            None,
-        );
+        let config = self.assets.config.get();
+        ugli::clear(framebuffer, Some(Rgba::BLACK), None, None);
 
         let framebuffer_size = framebuffer.size().as_f32();
 
+        // Layout
         let cut_pos = Aabb2::ZERO.extend_positive(self.lower_left_size * framebuffer_size);
         let cross_pos = Aabb2::point(vec2(0.0, cut_pos.max.y)).extend_positive(
             vec2(self.lower_left_size.x, 1.0 - self.lower_left_size.y) * framebuffer_size,
@@ -205,6 +202,7 @@ impl State2d {
             Aabb2::ZERO.extend_positive(framebuffer_size)
         };
 
+        // Update textures
         if include_3d {
             let cut_size = cut_pos.size().map(|x| x.round() as usize);
             if self.cut_texture.size() != cut_size {
@@ -228,12 +226,11 @@ impl State2d {
             self.geng.ugli(),
         );
 
+        // Calculate a cross section
         let cross_plane = Plane {
             normal: vec3(0.0, 0.0, 1.0),
             offset: 0.0,
         };
-
-        // Calculate a cross section
         let cross_sections: Vec<(usize, Vec<PlaneSectionVertex>)> = self
             .objects
             .iter()
@@ -251,12 +248,13 @@ impl State2d {
             })
             .collect();
 
+        // Render
         if include_3d {
             // Cut out the part in front of the plane
             let mut cut_buffer = attach_clear(
                 &mut self.cut_texture,
                 &mut self.cut_depth,
-                Rgba::opaque(0.1, 0.1, 0.1),
+                config.background_color,
                 self.geng.ugli(),
             );
             for obj in &self.objects {
@@ -274,7 +272,7 @@ impl State2d {
             let mut cross_buffer = attach_clear(
                 &mut self.cross_texture,
                 &mut self.cross_depth,
-                Rgba::opaque(0.05, 0.05, 0.05),
+                config.background_color,
                 self.geng.ugli(),
             );
             for (i, cross_section) in &cross_sections {
@@ -294,12 +292,7 @@ impl State2d {
         // Draw the cross section in 2d
         let mut flat_buffer =
             texture_utils::attach_texture(&mut self.flat_texture, self.geng.ugli());
-        ugli::clear(
-            &mut flat_buffer,
-            Some(self.assets.config.get().background_color),
-            None,
-            None,
-        );
+        ugli::clear(&mut flat_buffer, Some(config.background_color), None, None);
         for (i, cross_section) in &cross_sections {
             let i = *i;
             draw_flat_section(
@@ -311,6 +304,34 @@ impl State2d {
             );
         }
         draw_texture_to(&self.flat_texture, flat_pos, &self.geng, framebuffer);
+
+        // UI
+        let camera = &geng::PixelPerfectCamera;
+        if include_3d {
+            let color = Rgba::try_from("#333").unwrap();
+            // Vertical
+            self.geng.draw2d().draw2d(
+                framebuffer,
+                camera,
+                &draw2d::Quad::new(
+                    Aabb2::point(vec2(self.lower_left_size.x, 0.0) * framebuffer_size)
+                        .extend_symmetric(vec2(5.0, 0.0))
+                        .extend_up(framebuffer_size.y),
+                    color,
+                ),
+            );
+            // Horizontal
+            self.geng.draw2d().draw2d(
+                framebuffer,
+                camera,
+                &draw2d::Quad::new(
+                    Aabb2::point(vec2(0.0, self.lower_left_size.y) * framebuffer_size)
+                        .extend_symmetric(vec2(0.0, 5.0))
+                        .extend_right(self.lower_left_size.x * framebuffer_size.x),
+                    color,
+                ),
+            );
+        }
     }
 }
 
@@ -369,9 +390,17 @@ fn draw_texture_to(
     geng: &Geng,
     framebuffer: &mut ugli::Framebuffer,
 ) {
-    geng.draw2d().draw2d(
-        framebuffer,
+    texture_utils::draw_texture_fit(
+        texture,
+        target,
+        vec2(0.5, 0.5),
         &geng::PixelPerfectCamera,
-        &draw2d::TexturedQuad::new(target, texture),
+        geng,
+        framebuffer,
     );
+    // geng.draw2d().draw2d(
+    //     framebuffer,
+    //     &geng::PixelPerfectCamera,
+    //     &draw2d::TexturedQuad::new(target, texture),
+    // );
 }
