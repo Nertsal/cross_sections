@@ -49,6 +49,7 @@ pub struct State {
     geng: Geng,
     assets: Rc<Assets>,
     cursor_pos: vec2<f32>,
+    touch_pos: vec2<f32>,
     paused: bool,
     mode: Mode,
     include_3d_in_2d: bool,
@@ -66,6 +67,7 @@ impl State {
             mode: Mode::Mode2d,
             include_3d_in_2d: false,
             cursor_pos: vec2::ZERO,
+            touch_pos: vec2::ZERO,
             state2d: State2d::new(geng.clone(), assets.clone()),
             state3d: State3d::new(geng.clone(), assets.clone()),
             button2d: Aabb2::ZERO,
@@ -73,6 +75,25 @@ impl State {
             button_include3d: Aabb2::ZERO,
             geng,
             assets,
+        }
+    }
+
+    fn touch_press(&mut self, pos: vec2<f32>) {
+        self.touch_pos = pos;
+    }
+
+    fn touch_release(&mut self, pos: vec2<f32>) {
+        if (self.touch_pos - pos).len_sqr() < 1.0 {
+            // Click
+            if self.button2d.contains(self.cursor_pos) {
+                self.mode = Mode::Mode2d;
+            } else if self.button3d.contains(self.cursor_pos) {
+                self.mode = Mode::Mode3d;
+            } else if matches!(self.mode, Mode::Mode2d)
+                && self.button_include3d.contains(self.cursor_pos)
+            {
+                self.include_3d_in_2d = !self.include_3d_in_2d;
+            }
         }
     }
 }
@@ -92,7 +113,7 @@ impl geng::State for State {
     }
 
     fn handle_event(&mut self, event: geng::Event) {
-        let mut pass_to_state = true;
+        let pass_to_state = true;
 
         if let geng::Event::CursorMove { position } = event {
             self.cursor_pos = position.as_f32();
@@ -102,19 +123,19 @@ impl geng::State for State {
             self.paused = !self.paused;
         }
 
+        // TODO: multitouch
+        if let geng::Event::TouchStart(touch) = &event {
+            self.touch_press(touch.position.as_f32());
+        }
         if key_utils::is_event_press(&event, [geng::MouseButton::Left]) {
-            pass_to_state = false;
-            if self.button2d.contains(self.cursor_pos) {
-                self.mode = Mode::Mode2d;
-            } else if self.button3d.contains(self.cursor_pos) {
-                self.mode = Mode::Mode3d;
-            } else if matches!(self.mode, Mode::Mode2d)
-                && self.button_include3d.contains(self.cursor_pos)
-            {
-                self.include_3d_in_2d = !self.include_3d_in_2d;
-            } else {
-                pass_to_state = true;
-            }
+            self.touch_press(self.cursor_pos);
+        }
+
+        if let geng::Event::TouchEnd(touch) = &event {
+            self.touch_release(touch.position.as_f32());
+        }
+        if key_utils::is_event_release(&event, [geng::MouseButton::Left]) {
+            self.touch_release(self.cursor_pos);
         }
 
         if pass_to_state {
@@ -147,6 +168,7 @@ impl geng::State for State {
         let framebuffer_size = framebuffer.size().as_f32();
         let camera = &geng::PixelPerfectCamera;
         let font_size = framebuffer_size.x.min(framebuffer_size.y) * 0.02;
+        let font_size = font_size.max(20.0);
 
         let mut draw_button = |text: &str, position: Aabb2<f32>, active: bool| {
             let color = if active {

@@ -204,32 +204,55 @@ impl State2d {
     }
 
     pub fn handle_event(&mut self, event: &geng::Event) {
+        if let geng::Event::TouchMove(touch) = event {
+            self.touch_move(touch.position.as_f32());
+        }
         if let geng::Event::CursorMove { position } = event {
-            self.cursor_pos = position.as_f32();
+            self.touch_move(position.as_f32());
+        }
 
-            if let Some(drag) = &self.drag {
-                match drag {
-                    Drag::X => {
-                        self.lower_left_size.x = self.cursor_pos.x / self.framebuffer_size.x as f32;
-                    }
-                    Drag::Y => {
-                        self.lower_left_size.y = self.cursor_pos.y / self.framebuffer_size.y as f32;
-                    }
-                }
-            }
+        // TODO: multitouch
+        if let geng::Event::TouchStart(touch) = event {
+            self.touch_press(touch.position.as_f32());
+        }
+        if let geng::Event::TouchEnd(_) = event {
+            self.touch_release();
         }
 
         if key_utils::is_event_press(event, [geng::MouseButton::Left]) {
-            if self.separator_x.contains(self.cursor_pos) {
-                self.drag = Some(Drag::X);
-            } else if self.separator_y.contains(self.cursor_pos) {
-                self.drag = Some(Drag::Y);
-            } else {
-                self.drag = None;
-            }
+            self.touch_press(self.cursor_pos);
         } else if key_utils::is_event_release(event, [geng::MouseButton::Left]) {
+            self.touch_release();
+        }
+    }
+
+    fn touch_press(&mut self, pos: vec2<f32>) {
+        self.cursor_pos = pos;
+        if self.separator_x.contains(self.cursor_pos) {
+            self.drag = Some(Drag::X);
+        } else if self.separator_y.contains(self.cursor_pos) {
+            self.drag = Some(Drag::Y);
+        } else {
             self.drag = None;
         }
+    }
+
+    fn touch_move(&mut self, pos: vec2<f32>) {
+        self.cursor_pos = pos;
+        if let Some(drag) = &self.drag {
+            match drag {
+                Drag::X => {
+                    self.lower_left_size.x = self.cursor_pos.x / self.framebuffer_size.x as f32;
+                }
+                Drag::Y => {
+                    self.lower_left_size.y = self.cursor_pos.y / self.framebuffer_size.y as f32;
+                }
+            }
+        }
+    }
+
+    fn touch_release(&mut self) {
+        self.drag = None;
     }
 
     pub fn draw(&mut self, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
