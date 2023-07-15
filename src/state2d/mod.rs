@@ -62,8 +62,10 @@ pub struct State2d {
     geng: Geng,
     assets: Rc<Assets>,
     framebuffer_size: vec2<usize>,
+    unit_geometry: Rc<ugli::VertexBuffer<draw2d::TexturedVertex>>,
     cut_texture: ugli::Texture,
     cut_depth: ugli::Renderbuffer<ugli::DepthComponent>,
+    cut_post_texture: ugli::Texture,
     cross_texture: ugli::Texture,
     cross_depth: ugli::Renderbuffer<ugli::DepthComponent>,
     flat_texture: ugli::Texture,
@@ -85,8 +87,10 @@ impl State2d {
         let prefab = |geometry| Rc::new(ugli::VertexBuffer::new_dynamic(geng.ugli(), geometry));
         Self {
             framebuffer_size: vec2(1, 1),
+            unit_geometry: Rc::new(geng_utils::geometry::unit_quad_geometry(geng.ugli())),
             cut_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
             cut_depth: ugli::Renderbuffer::new(geng.ugli(), vec2(1, 1)),
+            cut_post_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
             cross_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
             cross_depth: ugli::Renderbuffer::new(geng.ugli(), vec2(1, 1)),
             flat_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
@@ -254,6 +258,11 @@ impl State2d {
                 self.cut_depth = ugli::Renderbuffer::new(self.geng.ugli(), cut_size);
             }
             texture_utils::update_texture_size(&mut self.cut_texture, cut_size, self.geng.ugli());
+            texture_utils::update_texture_size(
+                &mut self.cut_post_texture,
+                cut_size,
+                self.geng.ugli(),
+            );
 
             let cross_size = cross_pos.size().map(|x| x.round() as usize);
             if self.cross_texture.size() != cross_size {
@@ -311,7 +320,24 @@ impl State2d {
                     &mut cut_buffer,
                 );
             }
-            draw_texture_to(&self.cut_texture, cut_pos, &self.geng, framebuffer);
+
+            // Outlines
+            let mut post_buffer =
+                texture_utils::attach_texture(&mut self.cut_post_texture, self.geng.ugli());
+            ugli::draw(
+                &mut post_buffer,
+                &self.assets.postprocess.get(),
+                ugli::DrawMode::TriangleFan,
+                &*self.unit_geometry,
+                ugli::uniforms! {
+                    u_color_texture: &self.cut_texture,
+                    u_outline_texture: &self.cut_texture,
+                    u_outline_texture_size: self.cut_texture.size(),
+                    u_outline_color: Rgba::BLACK,
+                },
+                ugli::DrawParameters { ..default() },
+            );
+            draw_texture_to(&self.cut_post_texture, cut_pos, &self.geng, framebuffer);
 
             // Draw only the cross section in 3d
             let mut cross_buffer = attach_clear(
@@ -355,7 +381,7 @@ impl State2d {
         if include_3d {
             let color_normal = Rgba::try_from("#222").unwrap();
             let color_hover = Rgba::try_from("#555").unwrap();
-            let color_drag = Rgba::try_from("#111").unwrap();
+            let color_drag = Rgba::try_from("#333").unwrap();
 
             // Horizontal
             let color = if let Some(Drag::Y) = self.drag {
