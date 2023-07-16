@@ -193,9 +193,9 @@ impl State2d {
         }
 
         for obj in &mut self.objects {
-            obj.position += vec3::UNIT_Z * config.speed * delta_time;
+            obj.position += vec3::UNIT_Z * config.speed.value() * delta_time;
             obj.rotate_y(Angle::from_degrees(
-                config.rotation_speed_degrees * delta_time,
+                config.rotation_speed_degrees.value() * delta_time,
             ));
         }
         // Delete far objects

@@ -33,8 +33,8 @@ pub struct Config {
     spawn_depth_max: f32,
     scale_min: f32,
     scale_max: f32,
-    speed: f32,
-    rotation_speed_degrees: f32,
+    speed: Bounded<f32>,
+    rotation_speed_degrees: Bounded<f32>,
     background_color: Rgba<f32>,
     object_colors: Vec<Rgba<f32>>,
 }
@@ -60,10 +60,14 @@ pub struct State {
     button3d: Aabb2<f32>,
     button_include3d: Aabb2<f32>,
     slider_object_limit: Aabb2<f32>,
+    slider_speed: Aabb2<f32>,
+    slider_rotation_speed: Aabb2<f32>,
 }
 
 enum Drag {
     SliderObjects,
+    SliderSpeed,
+    SliderRotation,
 }
 
 impl State {
@@ -81,6 +85,8 @@ impl State {
             button3d: Aabb2::ZERO,
             button_include3d: Aabb2::ZERO,
             slider_object_limit: Aabb2::ZERO,
+            slider_speed: Aabb2::ZERO,
+            slider_rotation_speed: Aabb2::ZERO,
             geng,
             assets,
             config,
@@ -91,6 +97,10 @@ impl State {
         self.touch_pos = pos;
         if self.slider_object_limit.contains(pos) {
             self.drag = Some(Drag::SliderObjects);
+        } else if self.slider_speed.contains(pos) {
+            self.drag = Some(Drag::SliderSpeed);
+        } else if self.slider_rotation_speed.contains(pos) {
+            self.drag = Some(Drag::SliderRotation);
         }
     }
 
@@ -103,6 +113,15 @@ impl State {
                     let mut value = self.config.object_limit.map(|x| x as f32);
                     value.set_ratio(t);
                     self.config.object_limit = value.map(|x| x.floor() as usize);
+                }
+                Drag::SliderSpeed => {
+                    let t = (pos.x - self.slider_speed.min.x) / self.slider_speed.width();
+                    self.config.speed.set_ratio(t);
+                }
+                Drag::SliderRotation => {
+                    let t = (pos.x - self.slider_rotation_speed.min.x)
+                        / self.slider_rotation_speed.width();
+                    self.config.rotation_speed_degrees.set_ratio(t);
                 }
             }
         }
@@ -286,11 +305,29 @@ impl State {
             .translate(vec2(-slider_size.x, -slider_size.y));
 
         let pos = framebuffer_size - vec2(1.0, 1.0) * font_size;
+
         self.slider_object_limit = slider.translate(pos);
         draw_slider(
             &format!("Objects {:2}", self.config.object_limit.value()),
             self.slider_object_limit,
             self.config.object_limit.map(|x| x as f32).get_ratio(),
+        );
+
+        self.slider_speed = slider.translate(pos + vec2(0.0, -font_size * 2.0));
+        draw_slider(
+            &format!("Speed {:.1}", self.config.speed.value()),
+            self.slider_speed,
+            self.config.speed.get_ratio(),
+        );
+
+        self.slider_rotation_speed = slider.translate(pos + vec2(0.0, -font_size * 4.0));
+        draw_slider(
+            &format!(
+                "Rotation speed {:2}",
+                self.config.rotation_speed_degrees.value()
+            ),
+            self.slider_rotation_speed,
+            self.config.rotation_speed_degrees.get_ratio(),
         );
     }
 }

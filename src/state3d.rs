@@ -172,9 +172,9 @@ impl State3d {
         }
 
         for obj in &mut self.objects {
-            obj.position += vec4::UNIT_W * config.speed * delta_time;
+            obj.position += vec4::UNIT_W * config.speed.value() * delta_time;
             obj.rotate_zw(Angle::from_degrees(
-                config.rotation_speed_degrees * delta_time,
+                config.rotation_speed_degrees.value() * delta_time,
             ));
         }
         // Delete far objects
