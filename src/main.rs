@@ -7,7 +7,7 @@ use self::state2d::State2d;
 use self::state3d::State3d;
 
 use geng::prelude::*;
-use geng_utils::{conversions::Vec2RealConversions, key as key_utils};
+use geng_utils::{bounded::Bounded, conversions::Vec2RealConversions, key as key_utils};
 
 #[derive(clap::Parser)]
 struct Opts {
@@ -17,7 +17,6 @@ struct Opts {
 
 #[derive(geng::asset::Load)]
 pub struct Assets {
-    pub config: Hot<Config>,
     pub cut_front: Hot<ugli::Program>,
     pub cut_back: Hot<ugli::Program>,
     pub cross: Hot<ugli::Program>,
@@ -29,7 +28,7 @@ pub struct Assets {
 #[derive(geng::asset::Load, Deserialize)]
 #[load(serde = "ron")]
 pub struct Config {
-    object_limit: usize,
+    object_limit: Bounded<usize>,
     spawn_depth_min: f32,
     spawn_depth_max: f32,
     scale_min: f32,
@@ -48,6 +47,7 @@ enum Mode {
 pub struct State {
     geng: Geng,
     assets: Rc<Assets>,
+    config: Config,
     cursor_pos: vec2<f32>,
     touch_pos: vec2<f32>,
     paused: bool,
@@ -55,13 +55,19 @@ pub struct State {
     include_3d_in_2d: bool,
     state2d: State2d,
     state3d: State3d,
+    drag: Option<Drag>,
     button2d: Aabb2<f32>,
     button3d: Aabb2<f32>,
     button_include3d: Aabb2<f32>,
+    slider_object_limit: Aabb2<f32>,
+}
+
+enum Drag {
+    SliderObjects,
 }
 
 impl State {
-    pub fn new(geng: Geng, assets: Rc<Assets>) -> Self {
+    pub fn new(geng: Geng, assets: Rc<Assets>, config: Config) -> Self {
         Self {
             paused: false,
             mode: Mode::Mode2d,
@@ -70,16 +76,36 @@ impl State {
             touch_pos: vec2::ZERO,
             state2d: State2d::new(geng.clone(), assets.clone()),
             state3d: State3d::new(geng.clone(), assets.clone()),
+            drag: None,
             button2d: Aabb2::ZERO,
             button3d: Aabb2::ZERO,
             button_include3d: Aabb2::ZERO,
+            slider_object_limit: Aabb2::ZERO,
             geng,
             assets,
+            config,
         }
     }
 
     fn touch_press(&mut self, pos: vec2<f32>) {
         self.touch_pos = pos;
+        if self.slider_object_limit.contains(pos) {
+            self.drag = Some(Drag::SliderObjects);
+        }
+    }
+
+    fn touch_move(&mut self, pos: vec2<f32>) {
+        if let Some(drag) = &self.drag {
+            match drag {
+                Drag::SliderObjects => {
+                    let t =
+                        (pos.x - self.slider_object_limit.min.x) / self.slider_object_limit.width();
+                    let mut value = self.config.object_limit.map(|x| x as f32);
+                    value.set_ratio(t);
+                    self.config.object_limit = value.map(|x| x.floor() as usize);
+                }
+            }
+        }
     }
 
     fn touch_release(&mut self, pos: vec2<f32>) {
@@ -93,76 +119,15 @@ impl State {
                 self.include_3d_in_2d = !self.include_3d_in_2d;
             }
         }
-    }
-}
-
-impl geng::State for State {
-    fn update(&mut self, delta_time: f64) {
-        if !self.paused {
-            match self.mode {
-                Mode::Mode2d => {
-                    self.state2d.update(delta_time);
-                }
-                Mode::Mode3d => {
-                    self.state3d.update(delta_time);
-                }
-            }
-        }
+        self.drag = None;
     }
 
-    fn handle_event(&mut self, event: geng::Event) {
-        let pass_to_state = true;
-
-        if let geng::Event::CursorMove { position } = event {
-            self.cursor_pos = position.as_f32();
-        }
-
-        if key_utils::is_event_press(&event, [geng::Key::P]) {
-            self.paused = !self.paused;
-        }
-
-        // TODO: multitouch
-        if let geng::Event::TouchStart(touch) = &event {
-            self.touch_press(touch.position.as_f32());
-        }
-        if key_utils::is_event_press(&event, [geng::MouseButton::Left]) {
-            self.touch_press(self.cursor_pos);
-        }
-
-        if let geng::Event::TouchEnd(touch) = &event {
-            self.touch_release(touch.position.as_f32());
-        }
-        if key_utils::is_event_release(&event, [geng::MouseButton::Left]) {
-            self.touch_release(self.cursor_pos);
-        }
-
-        if pass_to_state {
-            match self.mode {
-                Mode::Mode2d => self.state2d.handle_event(&event),
-                Mode::Mode3d => self.state3d.handle_event(&event),
-            }
-        }
+    fn draw_ui(&mut self, framebuffer: &mut ugli::Framebuffer) {
+        self.draw_mode_ui(framebuffer);
+        self.draw_config_ui(framebuffer);
     }
 
-    fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
-        ugli::clear(
-            framebuffer,
-            Some(self.assets.config.get().background_color),
-            Some(1.0),
-            None,
-        );
-
-        // State
-        match self.mode {
-            Mode::Mode2d => {
-                self.state2d.draw(self.include_3d_in_2d, framebuffer);
-            }
-            Mode::Mode3d => {
-                self.state3d.draw(framebuffer);
-            }
-        }
-
-        // UI
+    fn draw_mode_ui(&mut self, framebuffer: &mut ugli::Framebuffer) {
         let framebuffer_size = framebuffer.size().as_f32();
         let camera = &geng::PixelPerfectCamera;
         let font_size = framebuffer_size.x.min(framebuffer_size.y) * 0.02;
@@ -269,6 +234,140 @@ impl geng::State for State {
             );
         }
     }
+
+    fn draw_config_ui(&mut self, framebuffer: &mut ugli::Framebuffer) {
+        let framebuffer_size = framebuffer.size().as_f32();
+        let camera = &geng::PixelPerfectCamera;
+        let font_size = framebuffer_size.x.min(framebuffer_size.y) * 0.02;
+        let font_size = font_size.max(20.0);
+
+        let mut draw_slider = |text: &str, position: Aabb2<f32>, value: f32| {
+            let color = Rgba::try_from("#777").unwrap();
+            self.geng
+                .draw2d()
+                .draw2d(framebuffer, camera, &draw2d::Quad::new(position, color));
+
+            // Slider button
+            let color = if position.contains(self.cursor_pos) {
+                if key_utils::is_key_pressed(self.geng.window(), [geng::MouseButton::Left]) {
+                    // Pressed
+                    Rgba::try_from("#333").unwrap()
+                } else {
+                    // Hovered
+                    Rgba::try_from("#555").unwrap()
+                }
+            } else {
+                Rgba::try_from("#444").unwrap()
+            };
+            let pos = geng_utils::layout::aabb_pos(position, vec2(value, 0.5));
+            self.geng.draw2d().draw2d(
+                framebuffer,
+                camera,
+                &draw2d::Ellipse::circle(pos, font_size * 0.5, color),
+            );
+
+            // Text
+            self.geng.default_font().draw(
+                framebuffer,
+                camera,
+                text,
+                vec2::splat(geng::TextAlign::RIGHT),
+                mat3::translate(
+                    geng_utils::layout::aabb_pos(position, vec2(0.0, 0.5))
+                        + vec2(-font_size * 0.5, -font_size / 4.0),
+                ) * mat3::scale_uniform(font_size),
+                Rgba::WHITE,
+            );
+        };
+
+        let slider_size = vec2(5.0, 0.3) * font_size;
+        let slider = Aabb2::ZERO
+            .extend_positive(slider_size)
+            .translate(vec2(-slider_size.x, -slider_size.y));
+
+        let pos = framebuffer_size - vec2(1.0, 1.0) * font_size;
+        self.slider_object_limit = slider.translate(pos);
+        draw_slider(
+            &format!("Objects {:2}", self.config.object_limit.value()),
+            self.slider_object_limit,
+            self.config.object_limit.map(|x| x as f32).get_ratio(),
+        );
+    }
+}
+
+impl geng::State for State {
+    fn update(&mut self, delta_time: f64) {
+        if !self.paused {
+            match self.mode {
+                Mode::Mode2d => {
+                    self.state2d.update(&self.config, delta_time);
+                }
+                Mode::Mode3d => {
+                    self.state3d.update(&self.config, delta_time);
+                }
+            }
+        }
+    }
+
+    fn handle_event(&mut self, event: geng::Event) {
+        let pass_to_state = true;
+
+        if let geng::Event::CursorMove { position } = event {
+            self.cursor_pos = position.as_f32();
+            self.touch_move(self.cursor_pos);
+        }
+        if let geng::Event::TouchMove(touch) = &event {
+            self.touch_move(touch.position.as_f32());
+        }
+
+        if key_utils::is_event_press(&event, [geng::Key::P]) {
+            self.paused = !self.paused;
+        }
+
+        // TODO: multitouch
+        if let geng::Event::TouchStart(touch) = &event {
+            self.touch_press(touch.position.as_f32());
+        }
+        if key_utils::is_event_press(&event, [geng::MouseButton::Left]) {
+            self.touch_press(self.cursor_pos);
+        }
+
+        if let geng::Event::TouchEnd(touch) = &event {
+            self.touch_release(touch.position.as_f32());
+        }
+        if key_utils::is_event_release(&event, [geng::MouseButton::Left]) {
+            self.touch_release(self.cursor_pos);
+        }
+
+        if pass_to_state {
+            match self.mode {
+                Mode::Mode2d => self.state2d.handle_event(&event),
+                Mode::Mode3d => self.state3d.handle_event(&event),
+            }
+        }
+    }
+
+    fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
+        ugli::clear(
+            framebuffer,
+            Some(self.config.background_color),
+            Some(1.0),
+            None,
+        );
+
+        // State
+        match self.mode {
+            Mode::Mode2d => {
+                self.state2d
+                    .draw(&self.config, self.include_3d_in_2d, framebuffer);
+            }
+            Mode::Mode3d => {
+                self.state3d.draw(&self.config, framebuffer);
+            }
+        }
+
+        self.draw_ui(framebuffer);
+    }
 }
 
 fn main() {
@@ -283,6 +382,11 @@ fn main() {
         let assets: Rc<Assets> = geng::asset::Load::load(manager, &run_dir().join("assets"), &())
             .await
             .expect("failed to load assets");
-        geng.run_state(State::new(geng.clone(), assets)).await
+        let config: Config =
+            geng::asset::Load::load(manager, &run_dir().join("assets").join("config.ron"), &())
+                .await
+                .expect("failed to load config");
+        geng.run_state(State::new(geng.clone(), assets, config))
+            .await
     })
 }

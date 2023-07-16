@@ -1,5 +1,9 @@
 Config(
-    object_limit: 100,
+    object_limit: Bounded(
+        value: 40,
+        min: 0,
+        max: 40,
+    ),
     spawn_depth_min: 0.7,
     spawn_depth_max: 0.9,
     scale_min: 0.5,

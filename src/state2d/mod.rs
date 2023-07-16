@@ -8,7 +8,7 @@ use crate::{
         shape::Triangle,
         Vertex,
     },
-    Assets,
+    Assets, Config,
 };
 
 use geng::prelude::*;
@@ -135,15 +135,14 @@ impl State2d {
         pos.into_2d()
     }
 
-    pub fn update(&mut self, delta_time: f64) {
+    pub fn update(&mut self, config: &Config, delta_time: f64) {
         let delta_time = delta_time as f32;
-        let config = self.assets.config.get();
 
         self.simulation_time += delta_time;
         self.next_spawn -= delta_time;
         let mut rng = thread_rng();
         while self.next_spawn < 0.0 {
-            if self.objects.len() >= config.object_limit {
+            if self.objects.len() >= config.object_limit.value() {
                 self.next_spawn = 1.0;
                 break;
             }
@@ -255,9 +254,8 @@ impl State2d {
         self.drag = None;
     }
 
-    pub fn draw(&mut self, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
+    pub fn draw(&mut self, config: &Config, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
         self.framebuffer_size = framebuffer.size();
-        let config = self.assets.config.get();
         ugli::clear(framebuffer, Some(Rgba::BLACK), None, None);
 
         let framebuffer_size = framebuffer.size().as_f32();

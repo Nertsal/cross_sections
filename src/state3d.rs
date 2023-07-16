@@ -1,7 +1,7 @@
 use crate::{
     camera3d::Camera3d,
     geometry::{mat5, shape::Tetrahedron4d, space::Space, vec4_len, vec4_norm, vec5, Vertex},
-    Assets,
+    Assets, Config,
 };
 
 use geng::prelude::*;
@@ -93,8 +93,7 @@ impl State3d {
         }
     }
 
-    pub fn random_spawn(&self) -> vec3<f32> {
-        let config = self.assets.config.get();
+    pub fn random_spawn(&self, config: &Config) -> vec3<f32> {
         let mut rng = thread_rng();
         let x = rng.gen_range(-1.0..=1.0);
         let y = rng.gen_range(-1.0..=1.0);
@@ -115,15 +114,14 @@ impl State3d {
         }
     }
 
-    pub fn update(&mut self, delta_time: f64) {
+    pub fn update(&mut self, config: &Config, delta_time: f64) {
         let delta_time = delta_time as f32;
-        let config = self.assets.config.get();
 
         self.simulation_time += delta_time;
         self.next_spawn -= delta_time;
         let mut rng = thread_rng();
         while self.next_spawn < 0.0 {
-            if self.objects.len() >= config.object_limit {
+            if self.objects.len() >= config.object_limit.value() {
                 self.next_spawn = 1.0;
                 break;
             }
@@ -134,14 +132,14 @@ impl State3d {
                 let pos_w = -scale * 2.0;
 
                 let pos = 'outer: {
-                    let mut pos = self.random_spawn().extend(pos_w);
+                    let mut pos = self.random_spawn(config).extend(pos_w);
                     for _ in 0..5 {
                         let mut good = true;
                         for obj in &self.objects {
                             let dist = vec4_len(pos - obj.position);
                             if dist < (scale + obj.scale) * 2.0 {
                                 // Try another one
-                                pos = self.random_spawn().extend(pos_w);
+                                pos = self.random_spawn(config).extend(pos_w);
                                 good = false;
                                 break;
                             }
@@ -183,8 +181,7 @@ impl State3d {
         self.objects.retain(|obj| obj.position.w < obj.scale * 2.0);
     }
 
-    pub fn draw(&mut self, framebuffer: &mut ugli::Framebuffer) {
-        let config = self.assets.config.get();
+    pub fn draw(&mut self, config: &Config, framebuffer: &mut ugli::Framebuffer) {
         ugli::clear(framebuffer, Some(config.background_color), Some(1.0), None);
 
         self.framebuffer_size = framebuffer.size();
