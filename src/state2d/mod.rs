@@ -73,7 +73,6 @@ pub struct State2d {
     camera3d: Camera3d,
     camera2d: Camera2d,
     simulation_time: f32,
-    next_spawn: f32,
     prefabs: Vec<Rc<ugli::VertexBuffer<Vertex>>>,
     objects: Vec<Object>,
     cursor_pos: vec2<f32>,
@@ -109,7 +108,6 @@ impl State2d {
                 fov: 10.0,
             },
             simulation_time: 0.0,
-            next_spawn: 0.0,
             prefabs: vec![prefab(crate::geometry::shape::unit_cube_triangulated())],
             objects: Vec::new(),
             cursor_pos: vec2::ZERO,
@@ -139,16 +137,8 @@ impl State2d {
         let delta_time = delta_time as f32;
 
         self.simulation_time += delta_time;
-        self.next_spawn -= delta_time;
         let mut rng = thread_rng();
-        while self.next_spawn < 0.0 {
-            if self.objects.len() >= config.object_limit.value() {
-                self.next_spawn = 1.0;
-                break;
-            }
-
-            // Final range: 0.1..=0.5
-            self.next_spawn += rng.gen_range(0.0..=1.0).sqr() * 0.4 + 0.1;
+        if self.objects.len() < config.object_limit.value() {
             if let Some(geometry) = self.prefabs.choose(&mut rng) {
                 let scale = rng.gen_range(config.scale_min..=config.scale_max);
                 let pos_z = -scale * 2.0;

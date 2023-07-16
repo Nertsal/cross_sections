@@ -59,7 +59,6 @@ pub struct State3d {
     normal_texture: ugli::Texture,
     depth_buffer: ugli::Renderbuffer<ugli::DepthComponent>,
     simulation_time: f32,
-    next_spawn: f32,
     prefabs: Vec<Rc<[Tetrahedron4d]>>,
     objects: Vec<Object>,
     camera: Camera3d,
@@ -72,7 +71,6 @@ impl State3d {
         Self {
             unit_geometry: Rc::new(geng_utils::geometry::unit_quad_geometry(geng.ugli())),
             simulation_time: 0.0,
-            next_spawn: 0.0,
             framebuffer_size: vec2(1, 1),
             screen_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
             normal_texture: texture_utils::new_texture(geng.ugli(), vec2(1, 1)),
@@ -118,15 +116,8 @@ impl State3d {
         let delta_time = delta_time as f32;
 
         self.simulation_time += delta_time;
-        self.next_spawn -= delta_time;
         let mut rng = thread_rng();
-        while self.next_spawn < 0.0 {
-            if self.objects.len() >= config.object_limit.value() {
-                self.next_spawn = 1.0;
-                break;
-            }
-
-            self.next_spawn += 0.1;
+        if self.objects.len() < config.object_limit.value() {
             if let Some(geometry) = self.prefabs.choose(&mut rng) {
                 let scale = rng.gen_range(config.scale_min..=config.scale_max);
                 let pos_w = -scale * 2.0;
