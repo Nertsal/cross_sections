@@ -117,7 +117,12 @@ impl State3d {
 
         self.simulation_time += delta_time;
         let mut rng = thread_rng();
-        if self.objects.len() < config.object_limit.value() {
+        let count = self
+            .objects
+            .iter()
+            .filter(|obj| obj.position.w < 0.0)
+            .count();
+        if (count as f32) < config.object_limit.value() / 100.0 * 30.0 {
             if let Some(geometry) = self.prefabs.choose(&mut rng) {
                 let scale = rng.gen_range(config.scale_min..=config.scale_max);
                 let pos_w = -scale * 2.0;

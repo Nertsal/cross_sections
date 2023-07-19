@@ -28,7 +28,7 @@ pub struct Assets {
 #[derive(geng::asset::Load, Deserialize)]
 #[load(serde = "ron")]
 pub struct Config {
-    object_limit: Bounded<usize>,
+    object_limit: Bounded<f32>,
     spawn_depth_min: f32,
     spawn_depth_max: f32,
     scale_min: f32,
@@ -110,9 +110,7 @@ impl State {
                 Drag::SliderObjects => {
                     let t =
                         (pos.x - self.slider_object_limit.min.x) / self.slider_object_limit.width();
-                    let mut value = self.config.object_limit.map(|x| x as f32);
-                    value.set_ratio(t);
-                    self.config.object_limit = value.map(|x| x.floor() as usize);
+                    self.config.object_limit.set_ratio(t);
                 }
                 Drag::SliderSpeed => {
                     let t = (pos.x - self.slider_speed.min.x) / self.slider_speed.width();
@@ -308,9 +306,9 @@ impl State {
 
         self.slider_object_limit = slider.translate(pos);
         draw_slider(
-            &format!("Objects {:2}", self.config.object_limit.value()),
+            &format!("Objects density {:.0}", self.config.object_limit.value()),
             self.slider_object_limit,
-            self.config.object_limit.map(|x| x as f32).get_ratio(),
+            self.config.object_limit.get_ratio(),
         );
 
         self.slider_speed = slider.translate(pos + vec2(0.0, -font_size * 2.0));
@@ -323,7 +321,7 @@ impl State {
         self.slider_rotation_speed = slider.translate(pos + vec2(0.0, -font_size * 4.0));
         draw_slider(
             &format!(
-                "Rotation speed {:2}",
+                "Rotation speed {:.0}",
                 self.config.rotation_speed_degrees.value()
             ),
             self.slider_rotation_speed,

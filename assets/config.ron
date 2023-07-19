@@ -1,8 +1,8 @@
 Config(
     object_limit: Bounded(
-        value: 40,
-        min: 0,
-        max: 40,
+        value: 50.0,
+        min: 0.0,
+        max: 100.0,
     ),
     spawn_depth_min: 0.7,
     spawn_depth_max: 0.9,
