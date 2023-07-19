@@ -297,7 +297,7 @@ impl State {
             );
         };
 
-        let slider_size = vec2(5.0, 0.3) * font_size;
+        let slider_size = vec2(5.0, 0.5) * font_size;
         let slider = Aabb2::ZERO
             .extend_positive(slider_size)
             .translate(vec2(-slider_size.x, -slider_size.y));
