@@ -14,6 +14,13 @@ use crate::{
 use geng::prelude::*;
 use geng_utils::{conversions::Vec2RealConversions, key as key_utils, texture as texture_utils};
 
+pub struct Prefab {
+    pub name: String,
+    pub active: bool,
+    pub ui_checkbox: Aabb2<f32>,
+    pub geometry: Rc<ugli::VertexBuffer<Vertex>>,
+}
+
 pub struct Object {
     pub geometry: Rc<ugli::VertexBuffer<Vertex>>,
     pub position: vec3<f32>,
@@ -73,9 +80,10 @@ pub struct State2d {
     camera3d: Camera3d,
     camera2d: Camera2d,
     simulation_time: f32,
-    prefabs: Vec<Rc<ugli::VertexBuffer<Vertex>>>,
+    prefabs: Vec<Prefab>,
     objects: Vec<Object>,
     cursor_pos: vec2<f32>,
+    touch_pos: vec2<f32>,
     separator_x: Aabb2<f32>,
     separator_y: Aabb2<f32>,
     drag: Option<Drag>,
@@ -83,7 +91,12 @@ pub struct State2d {
 
 impl State2d {
     pub fn new(geng: Geng, assets: Rc<Assets>) -> Self {
-        let prefab = |geometry| Rc::new(ugli::VertexBuffer::new_dynamic(geng.ugli(), geometry));
+        let prefab = |name: &str, geometry| Prefab {
+            name: name.to_string(),
+            active: true,
+            ui_checkbox: Aabb2::ZERO,
+            geometry: Rc::new(ugli::VertexBuffer::new_dynamic(geng.ugli(), geometry)),
+        };
         Self {
             framebuffer_size: vec2(1, 1),
             unit_geometry: Rc::new(geng_utils::geometry::unit_quad_geometry(geng.ugli())),
@@ -108,9 +121,16 @@ impl State2d {
                 fov: 10.0,
             },
             simulation_time: 0.0,
-            prefabs: vec![prefab(crate::geometry::shape::unit_cube_triangulated())],
+            prefabs: vec![
+                prefab("Cube", crate::geometry::shape::unit_cube_triangulated()),
+                prefab(
+                    "Tetrahedron",
+                    crate::geometry::shape::unit_tetrahedron_triangulized(),
+                ),
+            ],
             objects: Vec::new(),
             cursor_pos: vec2::ZERO,
+            touch_pos: vec2::ZERO,
             separator_x: Aabb2::ZERO,
             separator_y: Aabb2::ZERO,
             drag: None,
@@ -144,7 +164,12 @@ impl State2d {
             .filter(|obj| obj.position.z < 0.0)
             .count();
         if (count as f32) < config.object_limit.value() / 100.0 * 15.0 {
-            if let Some(geometry) = self.prefabs.choose(&mut rng) {
+            if let Some(prefab) = self
+                .prefabs
+                .iter()
+                .filter(|prefab| prefab.active)
+                .choose(&mut rng)
+            {
                 let scale = rng.gen_range(config.scale_min..=config.scale_max);
                 let pos_z = -scale * 2.0;
 
@@ -169,7 +194,7 @@ impl State2d {
                 };
 
                 if let Some(pos) = pos {
-                    let mut obj = Object::new(pos, geometry.clone());
+                    let mut obj = Object::new(pos, prefab.geometry.clone());
                     obj.orientation = vec3(
                         rng.gen_range(-1.0..=1.0),
                         rng.gen_range(-1.0..=1.0),
@@ -221,6 +246,7 @@ impl State2d {
     }
 
     fn touch_press(&mut self, pos: vec2<f32>) {
+        self.touch_pos = pos;
         self.cursor_pos = pos;
         if self.separator_x.contains(self.cursor_pos) {
             self.drag = Some(Drag::X);
@@ -247,6 +273,16 @@ impl State2d {
 
     fn touch_release(&mut self) {
         self.drag = None;
+        if (self.touch_pos - self.cursor_pos).len_sqr() < 1.0 {
+            // Click
+            if let Some(prefab) = self
+                .prefabs
+                .iter_mut()
+                .find(|prefab| prefab.ui_checkbox.contains(self.cursor_pos))
+            {
+                prefab.active = !prefab.active;
+            }
+        }
     }
 
     pub fn draw(&mut self, config: &Config, include_3d: bool, framebuffer: &mut ugli::Framebuffer) {
@@ -394,6 +430,9 @@ impl State2d {
         draw_texture_to(&self.flat_texture, flat_pos, &self.geng, framebuffer);
 
         // UI
+        let font_size = framebuffer_size.x.min(framebuffer_size.y) * 0.02;
+        let font_size = font_size.max(20.0);
+
         let camera = &geng::PixelPerfectCamera;
         if include_3d {
             let color_normal = Rgba::try_from("#222").unwrap();
@@ -433,6 +472,58 @@ impl State2d {
                 camera,
                 &draw2d::Quad::new(self.separator_x, color),
             );
+        }
+
+        // Checkboxes for different shapes
+        {
+            let checkbox_size = vec2::splat(1.5) * font_size;
+            let checkbox = Aabb2::ZERO.extend_symmetric(checkbox_size / 2.0);
+            let pos = vec2(0.9, 0.1) * framebuffer_size;
+            for (i, prefab) in self.prefabs.iter_mut().enumerate() {
+                prefab.ui_checkbox = checkbox
+                    .translate(pos + vec2(0.0, i as f32 * (checkbox.height() + font_size * 0.5)));
+            }
+
+            for prefab in &self.prefabs {
+                // Outline
+                let color = if prefab.active {
+                    Rgba::try_from("#aaa").unwrap()
+                } else {
+                    Rgba::try_from("#555").unwrap()
+                };
+                self.geng.draw2d().draw2d(
+                    framebuffer,
+                    camera,
+                    &draw2d::Quad::new(prefab.ui_checkbox, color),
+                );
+
+                // Fill
+                let color = if prefab.ui_checkbox.contains(self.cursor_pos) {
+                    // Hovered
+                    Rgba::try_from("#333").unwrap()
+                } else {
+                    Rgba::try_from("#222").unwrap()
+                };
+                self.geng.draw2d().draw2d(
+                    framebuffer,
+                    camera,
+                    &draw2d::Quad::new(prefab.ui_checkbox.extend_uniform(-font_size * 0.2), color),
+                );
+
+                // Text
+                // let font_size = font_size * 0.8;
+                self.geng.default_font().draw(
+                    framebuffer,
+                    camera,
+                    &prefab.name,
+                    vec2::splat(geng::TextAlign::RIGHT),
+                    mat3::translate(
+                        geng_utils::layout::aabb_pos(prefab.ui_checkbox, vec2(0.0, 0.5))
+                            + vec2(-font_size * 0.5, -font_size / 4.0),
+                    ) * mat3::scale_uniform(font_size),
+                    Rgba::WHITE,
+                );
+            }
         }
     }
 }

@@ -74,6 +74,21 @@ pub fn unit_tetrahedron() -> [(f32, f32, f32); 4] {
     ]
 }
 
+pub fn unit_tetrahedron_triangulized() -> Vec<Vertex> {
+    let tri = |vs: [(f32, f32, f32); 3]| Triangle::new(vs.map(|(x, y, z)| vec3(x, y, z)));
+    let [a, b, c, d] = unit_tetrahedron();
+    let triangles = [
+        tri([a, c, b]),
+        tri([a, b, d]),
+        tri([a, c, d]),
+        tri([b, c, d]),
+    ];
+    triangles
+        .into_iter()
+        .flat_map(Triangle::into_vertices)
+        .collect()
+}
+
 pub fn unit_5cell() -> [(f32, f32, f32, f32); 5] {
     // const HEIGHT: f32 = 1.73205;
     // let [a, b, c, d] = unit_tetrahedron().map(|(x, y, z)| (x, y, z, -HEIGHT / 3.0));
