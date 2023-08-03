@@ -127,6 +127,10 @@ impl State2d {
                     "Tetrahedron",
                     crate::geometry::shape::unit_tetrahedron_triangulized(),
                 ),
+                prefab(
+                    "Icosahedron",
+                    crate::geometry::shape::unit_icosahedron_triangulized(),
+                ),
             ],
             objects: Vec::new(),
             cursor_pos: vec2::ZERO,
